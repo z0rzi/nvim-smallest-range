@@ -1,99 +1,115 @@
-local function findSmallestPair(pairs)
-    -- Searching for all the characters matching the pairs.
-    -- We want to remember the order of the pairs, so we can
-    -- match them later.
-    local regex = "⏺"
-    for _, pair in ipairs(pairs) do
-        regex = regex .. pair[1] .. pair[2]
+local function calculateDelta(pos1, pos2)
+    -- pos1 and pos2 are {line, col}
+    -- returns the number of characters between the 2 positions
+    local delta = 0
+    if pos1[1] == pos2[1] then
+        -- same line
+        delta = pos2[2] - pos1[2]
+    else
+        -- different lines
+        delta = pos2[2] + vim.fn.col({ pos1[1], '$' }) - pos1[2]
+        for i = pos1[1] + 1, pos2[1] - 1 do
+            delta = delta + vim.fn.col({ i, '$' })
+        end
     end
-    regex = "[^" .. regex .. "]+"
 
+    return delta
+end
+
+local function findSmallestPair(pairs)
     local current_lnum = vim.fn.line(".") or 1
 
     -- searching 3 lines before to 3 lines after the cursor
     local from = current_lnum - 3
     local to = current_lnum + 3
 
-    local all_lines = ""
-    for linenum = from, to do
-        local line = vim.fn.getline(linenum)
-        if linenum == current_lnum then
-            line = line .. "⏺"
-        end
-        all_lines = all_lines .. line
+    -- making sure from > 0 and to < #lines
+    local lines = vim.fn.line("$") or 1
+    if from < 1 then
+        from = 1
+    end
+    if to > lines then
+        to = lines
     end
 
-    -- Removing all the characters that are not part of the pairs from all_lines
-    local braces = all_lines:gsub(regex, "")
+    local pair_pos = {}
+    local smallest_delta = -1
 
-    -- removing all matching braces (e.g. '{}' or '()' or '[]') recursively
-    while true do
-        local new_braces = braces
-        for _, pair in ipairs(pairs) do
-            local rx = pair[1] .. pair[2]
-            new_braces = new_braces:gsub(rx, "")
+    for _, p in ipairs(pairs) do
+        local closest_before
+        local closest_after
+
+        if p[1] == p[2] then
+            -- opening and closing chars are the same
+            closest_before = vim.fn.searchpos(p[1], "cbnW")
+            closest_after = vim.fn.searchpos(p[2], "cnW")
+        else
+            closest_before = vim.fn.searchpairpos(p[1], "", p[2], "cbnW")
+            closest_after = vim.fn.searchpairpos(p[1], "", p[2], "cnW")
         end
-        if new_braces == braces then
-            break
-        end
-        braces = new_braces
-    end
 
-    -- separating the braces before and after the cursor.
-    local cursor_pos = braces:find("⏺")
-    local braces_before = braces:sub(1, cursor_pos - 1)
-    local braces_after = braces:sub(cursor_pos + 3):reverse()
+        local can_be_multiline = p[3]
 
-    -- Removing all the matching braces from the braces_before and braces_after
-    while true do
-        local prev_brace = braces_before:sub(-1)
-        local next_brace = braces_after:sub(-1)
-        local found_pair = false
-        for _, pair in ipairs(pairs) do
-            if prev_brace:match(pair[1]) and next_brace:match(pair[2]) then
-                braces_before = braces_before:sub(1, -2)
-                braces_after = braces_after:sub(1, -2)
-                found_pair = true
-                break
+        local are_lines_ok = can_be_multiline or ( closest_before[1] == closest_after[1])
+        local chars_have_been_found = closest_before[1] > 0 and closest_after[1] > 0
+
+        if are_lines_ok and chars_have_been_found then
+            local delta = calculateDelta(closest_before, closest_after)
+            if smallest_delta < 0 or delta < smallest_delta then
+                smallest_delta = delta
+                pair_pos = { closest_before, closest_after }
             end
         end
-        if not found_pair then
-            break
-        end
     end
 
-    -- Doing the same thing, but from the end of the strings
-    braces_before = braces_before:reverse()
-    braces_after = braces_after:reverse()
-    while true do
-        local prev_brace = braces_before:sub(-1)
-        local next_brace = braces_after:sub(-1)
-        local found_pair = false
-        for _, pair in ipairs(pairs) do
-            if prev_brace:match(pair[1]) and next_brace:match(pair[2]) then
-                braces_before = braces_before:sub(1, -2)
-                braces_after = braces_after:sub(1, -2)
-                found_pair = true
-                break
-            end
-        end
-        if not found_pair then
-            break
-        end
-    end
-
-    return { '{', '}' };
+    return pair_pos
 end
 
-local function select_smallest_range()
+local function select_smallest_range(include_chars)
     local pair = findSmallestPair({
-        { "{", "}" },
-        { "(", ")" },
-        { "[", "]" },
-        { "<", ">" },
-        { "'", "'" },
-        { '"', '"' },
+        -- { "opening", "closing" , multiline },
+        { "{", "}", true },
+        { "(", ")", true },
+        { "[", "]", true },
+        { "<", ">", true },
+        { "'", "'", false },
+        { '"', '"', false },
     })
+
+    if #pair > 0 then
+        if not include_chars then
+            -- removing the chars from the pair
+
+            local eol_start = vim.fn.col({ pair[1][1], '$' })
+
+            if pair[1][2] == eol_start - 1 then
+                -- opening char is at the end of the line
+                print('Yep')
+                pair[1][2] = 1
+                pair[1][1] = pair[1][1] + 1
+            else
+                pair[1][2] = pair[1][2] + 1
+            end
+
+
+            if pair[2][2] == 1 then
+                -- closing char is at the beginning of the line
+                pair[2][1] = pair[2][1] - 1
+                pair[2][2] = vim.fn.col({ pair[2][1], '$' }) - 1
+            else
+                pair[2][2] = pair[2][2] - 1
+            end
+        end
+
+        -- setting cursor pos to opening char
+        vim.fn.cursor(pair[1])
+
+        -- activating visual mode
+        vim.cmd("normal! v")
+
+        -- setting cursor pos to closing char
+        vim.fn.cursor(pair[2])
+    end
 end
 
 return {
