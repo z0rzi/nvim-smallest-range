@@ -84,18 +84,17 @@ local function select_smallest_range(include_chars)
 
             if pair[1][2] == eol_start - 1 then
                 -- opening char is at the end of the line
-                print('Yep')
-                pair[1][2] = 1
-                pair[1][1] = pair[1][1] + 1
-            else
-                pair[1][2] = pair[1][2] + 1
+                -- adding a space after the char
+                local line = vim.fn.getline(pair[1][1])
+                vim.fn.setline(pair[1][1], line .. " ")
             end
+            pair[1][2] = pair[1][2] + 1
 
 
             if pair[2][2] == 1 then
                 -- closing char is at the beginning of the line
                 pair[2][1] = pair[2][1] - 1
-                pair[2][2] = vim.fn.col({ pair[2][1], '$' }) - 1
+                pair[2][2] = vim.fn.col({ pair[2][1], '$' })
             else
                 pair[2][2] = pair[2][2] - 1
             end
