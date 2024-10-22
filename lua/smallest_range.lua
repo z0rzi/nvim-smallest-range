@@ -60,7 +60,7 @@ local function findClosestBrace(target, other, direction)
     return target_pos
 end
 
-local function searchPairPosForIdenticalPair(char, multiline)
+local function searchPairPosForIdenticalPair(pair_char, multiline)
     local current_line = vim.fn.line('.')
 
     if multiline == false then
@@ -71,8 +71,8 @@ local function searchPairPosForIdenticalPair(char, multiline)
 
         -- Iterating on the character in the line
         for col = 1, vim.fn.strlen(line_content) do
-            local char = line_content:sub(col, col)
-            if char == pair[1] then
+            local cur_char = line_content:sub(col, col)
+            if cur_char == pair_char then
                 if last_open_col == 0 then
                     -- We found an opening char
                     if col > cursor_col then
