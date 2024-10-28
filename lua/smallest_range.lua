@@ -185,6 +185,7 @@ local function select_smallest_range(include_chars)
         { "<", ">", true },
         { "'", "'", false },
         { '"', '"', false },
+        { '`', '`', false },
     })
 
     if #pair == 0 then
