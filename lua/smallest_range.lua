@@ -1,3 +1,14 @@
+local all_pairs = {
+    -- { "opening", "closing" , multiline },
+    { "[", "]", true },
+    { "{", "}", true },
+    { "(", ")", true },
+    { "<", ">", true },
+    { "'", "'", false },
+    { '"', '"', false },
+    { '`', '`', false },
+}
+
 local function calculateDelta(pos1, pos2)
     -- pos1 and pos2 are {line, col}
     -- returns the number of characters between the 2 positions
@@ -132,7 +143,7 @@ local function searchPairPos(pair)
     return { pos_before, pos_after }
 end
 
-local function findSmallestPair(pairs)
+local function find_smallest_pair(pairs)
     local current_lnum = vim.fn.line(".") or 1
 
     -- searching 3 lines before to 3 lines after the cursor
@@ -176,53 +187,54 @@ local function findSmallestPair(pairs)
     return pair_pos
 end
 
-local function select_smallest_range(include_chars)
-    local pair = findSmallestPair({
-        -- { "opening", "closing" , multiline },
-        { "[", "]", true },
-        { "{", "}", true },
-        { "(", ")", true },
-        { "<", ">", true },
-        { "'", "'", false },
-        { '"', '"', false },
-        { '`', '`', false },
-    })
+local function remove_chars_from_range(pair_positions)
+    -- removing the chars from the pair
 
-    if #pair == 0 then
+    local eol_start = vim.fn.col({ pair_positions[1][1], '$' })
+
+    if pair_positions[1][2] == eol_start - 1 then
+        -- opening char is at the end of the line
+        -- adding a space after the char
+        local line = vim.fn.getline(pair_positions[1][1])
+        vim.fn.setline(pair_positions[1][1], line .. " ")
+    end
+    pair_positions[1][2] = pair_positions[1][2] + 1
+
+
+    if pair_positions[2][2] == 1 then
+        -- closing char is at the beginning of the line
+        pair_positions[2][1] = pair_positions[2][1] - 1
+        pair_positions[2][2] = vim.fn.col({ pair_positions[2][1], '$' })
+    else
+        pair_positions[2][2] = pair_positions[2][2] - 1
+    end
+
+    return pair_positions
+end
+
+local function select_smallest_range(include_chars, from_cursor)
+    local pair_positions = find_smallest_pair(all_pairs)
+
+    if #pair_positions == 0 then
         return
     end
 
     if not include_chars then
         -- removing the chars from the pair
-
-        local eol_start = vim.fn.col({ pair[1][1], '$' })
-
-        if pair[1][2] == eol_start - 1 then
-            -- opening char is at the end of the line
-            -- adding a space after the char
-            local line = vim.fn.getline(pair[1][1])
-            vim.fn.setline(pair[1][1], line .. " ")
-        end
-        pair[1][2] = pair[1][2] + 1
-
-
-        if pair[2][2] == 1 then
-            -- closing char is at the beginning of the line
-            pair[2][1] = pair[2][1] - 1
-            pair[2][2] = vim.fn.col({ pair[2][1], '$' })
-        else
-            pair[2][2] = pair[2][2] - 1
-        end
+        pair_positions = remove_chars_from_range(pair_positions)
     end
 
-    -- setting cursor pos to opening char
-    vim.fn.cursor(pair[1])
-
-    -- activating visual mode
-    vim.cmd("normal! v")
-
-    -- setting cursor pos to closing char
-    vim.fn.cursor(pair[2])
+    if from_cursor == -1 then
+        vim.cmd("normal! hv") -- activating visual mode
+        vim.fn.cursor(pair_positions[1]) -- setting cursor pos to opening char
+    elseif from_cursor == 0 then
+        vim.fn.cursor(pair_positions[1]) -- setting cursor pos to opening char
+        vim.cmd("normal! v") -- activating visual mode
+        vim.fn.cursor(pair_positions[2]) -- setting cursor pos to closing char
+    else
+        vim.cmd("normal! v") -- activating visual mode
+        vim.fn.cursor(pair_positions[2]) -- setting cursor pos to closing char
+    end
 end
 
 return {
